@@ -3,6 +3,7 @@ package com.xjzhang.common.cache;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CachingConfigurerSupport;
 import org.springframework.cache.annotation.EnableCaching;
@@ -14,18 +15,20 @@ import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.cache.RedisCacheWriter;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
 import java.lang.reflect.Method;
 
 /**
  * 缓存配置类
+ *
  * @author xjzhang
  * @version 1.0
  * @date 2021/6/27 17:28
  */
 @Configuration
 @EnableCaching
+@ConditionalOnProperty(name = "spring.cache.type", havingValue = "redis")
 public class CacheConfig extends CachingConfigurerSupport {
     /**
      * 自定义缓存key的生成策略。默认的生成策略是看不懂的(乱码内容) 通过Spring 的依赖注入特性进行自定义的配置注入并且此类是一个配置类可以更多程度的自定义配置
@@ -77,9 +80,9 @@ public class CacheConfig extends CachingConfigurerSupport {
      * @return
      */
     @Bean
-    public RedisTemplate<String, String> redisTemplate(LettuceConnectionFactory factory) {
+    public RedisTemplate<String, Object> redisTemplate(LettuceConnectionFactory factory) {
         //创建Redis缓存操作助手RedisTemplate对象
-        StringRedisTemplate template = new StringRedisTemplate();
+        RedisTemplate template = new RedisTemplate();
         template.setConnectionFactory(factory);
         //以下代码为将RedisTemplate的Value序列化方式由JdkSerializationRedisSerializer更换为Jackson2JsonRedisSerializer
         //此种序列化方式结果清晰、容易阅读、存储字节少、速度快，所以推荐更换
@@ -88,10 +91,21 @@ public class CacheConfig extends CachingConfigurerSupport {
         om.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.ANY);
         om.enableDefaultTyping(ObjectMapper.DefaultTyping.NON_FINAL);
         jackson2JsonRedisSerializer.setObjectMapper(om);
+        template.setKeySerializer(new StringRedisSerializer());
         template.setValueSerializer(jackson2JsonRedisSerializer);
+        template.setHashKeySerializer(new StringRedisSerializer());
+        template.setHashValueSerializer(jackson2JsonRedisSerializer);
         template.afterPropertiesSet();
-        return template;//StringRedisTemplate是RedisTempLate<String, String>的子类
+
+        //RedisTemplate是RedisTempLate<String, String>的子类
+        return template;
     }
 
+    @Bean
+    public CacheProvider cacheProvider(RedisTemplate<String, Object> redisTemplate) {
+        CacheProvider cacheProvider = new CacheProvider();
+        cacheProvider.setRedisTemplate(redisTemplate);
 
+        return cacheProvider;
+    }
 }
